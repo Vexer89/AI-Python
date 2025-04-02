@@ -193,8 +193,8 @@ def train_tank(builder, location):
 def train_wraith(builder, location):
     return f'train wraith in {location} by {builder}'
 
-def train_battlecruiser(builder, location):
-    return f'train battlecruiser in {location} by {builder}'
+def train_battlecruiser(builder, location1, location2):
+    return f'train battlecruiser in {location1} by {builder}'
 
 starcraft_units = ('marine', 'tank', 'wraith', 'battlecruiser')
 starcraft_facilities = ('supply_depot', 'barracks', 'factory', 'starport', 'fusion_core')
@@ -205,26 +205,40 @@ def create_starcraft_domain(builders, building_areas, minerals_areas, facilities
     areas = building_areas + minerals_areas
 
     feature_domain_dict = {}
+    initial_state = {}
 
     for builder in builders:
         feature_domain_dict[builder_location(builder)] = set(areas)
         feature_domain_dict[collected_minerals(builder)] = boolean
 
+        initial_state[builder_location(builder)] = areas[0]
+        initial_state[collected_minerals(builder)] = False
+
     for facility in facilities:
-        feature_domain_dict[facility_is_built(facility)] = set(building_areas)
+        feature_domain_dict[facility_is_built(facility)] = set(building_areas + [None])
+
+        initial_state[facility_is_built(facility)] = None
 
     for location in building_areas:
         feature_domain_dict[is_building(location)] = boolean
 
+        initial_state[is_building(location)] = False
+
     for location in minerals_areas:
         feature_domain_dict[is_empty(location)] = boolean
+
+        initial_state[is_empty(location)] = False
 
     for unit in units:
         feature_domain_dict[is_unit_trained(unit)] = boolean
 
+        initial_state[is_unit_trained(unit)] = False
+
     actions = []
 
     for builder, location1, location2 in product(builders, areas, areas):
+        if location1 == location2:
+            continue
         actions.append(Strips(move(builder, location1, location2),
                               {builder_location(builder): location1},
                               {builder_location(builder): location2}))
@@ -235,6 +249,8 @@ def create_starcraft_domain(builders, building_areas, minerals_areas, facilities
                               {is_empty(location): True, collected_minerals(builder): True}))
 
     for builder, location1, location2 in product(builders, building_areas, building_areas):
+        if location1 == location2:
+            continue
         actions.append(Strips(build_supply_depot(builder, location1),
                               {builder_location(builder): location1,
                                is_building(location1) : False,
@@ -284,6 +300,44 @@ def create_starcraft_domain(builders, building_areas, minerals_areas, facilities
                                facility_is_built('fusion_core'): location1}
                               ))
 
+        actions.append(Strips(train_marine(builder, location1),
+                              {builder_location(builder): location1,
+                               facility_is_built('barracks'): location1,
+                               collected_minerals(builder): True},
+                              {is_unit_trained('marine'): True,
+                               collected_minerals(builder): False}))
+
+        actions.append(Strips(train_tank(builder, location1),
+                              {builder_location(builder): location1,
+                               facility_is_built('factory'): location1,
+                               collected_minerals(builder): True},
+                              {is_unit_trained('tank'): True,
+                               collected_minerals(builder): False}))
+
+        actions.append(Strips(train_wraith(builder, location1),
+                              {builder_location(builder): location1,
+                               facility_is_built('starport'): location1,
+                               collected_minerals(builder): True},
+                              {is_unit_trained('wraith'): True,
+                               collected_minerals(builder): False}))
+
+        actions.append(Strips(train_battlecruiser(builder, location1, location2),
+                              {builder_location(builder): location1,
+                               facility_is_built('starport'): location1,
+                               facility_is_built('fusion_core'): location2,
+                               collected_minerals(builder): True},
+                              {is_unit_trained('battlecruiser'): True,
+                               collected_minerals(builder): False}))
 
 
-    return STRIPS_domain(feature_domain_dict, actions)
+    return STRIPS_domain(feature_domain_dict, actions), initial_state
+
+domain_train_marine, initial_state_train_marine = create_starcraft_domain(['scv'],
+                                        ['sectorA', 'sectorB'],
+                                        ['mineralFieldA', 'mineralFieldB', 'mineralFieldC'])
+
+goal = {is_unit_trained('marine') : True}
+
+problem_train_marine = Planning_problem(domain_train_marine, initial_state_train_marine, goal)
+
+print(problem_train_marine.initial_state, problem_train_marine.goal)
