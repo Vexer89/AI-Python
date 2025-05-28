@@ -56,7 +56,12 @@ class TowerClimbEnv(gym.Env):
                         [self.map_width, self.map_height, self.map_width, self.map_height],
                         dtype=np.float32),
                     dtype=np.float32
-                )
+                ),
+                "agent_speed": gym.spaces.Box(
+                    low=-np.inf,
+                    high= np.inf,
+                    shape=(1,),
+                    dtype= np.float64)
             }
         )
 
@@ -108,7 +113,8 @@ class TowerClimbEnv(gym.Env):
         return {
             "agent_position": self._agent_position.copy(),
             "current_platform": self._platforms[self._agent_platform].flatten(),
-            "next_platform": self._platforms[min(self._agent_platform + 1, self.num_platforms - 1)].flatten()
+            "next_platform": self._platforms[min(self._agent_platform + 1, self.num_platforms - 1)].flatten(),
+            "agent_speed": np.array([self._agent_velocity_y], dtype=np.float64),
         }
 
     def _get_info(self):
@@ -130,7 +136,9 @@ class TowerClimbEnv(gym.Env):
     def step(self, action):
         terminated = False
         truncated = False
+        reward = -0.1
 
+        prev_x = self._agent_position[0]
         if action == Actions.left.value:
             move = max(0.0, self._agent_position[0] - self._horizontal_speed)
             self._agent_position[0] = move
@@ -151,26 +159,67 @@ class TowerClimbEnv(gym.Env):
         self.is_agent_on_platform = self._agent_on_platform()
 
         if self._agent_platform > last_platform:
-            reward = 2
+            reward += 10
         elif self._agent_platform < last_platform:
-            reward = -10
-        else:
-            reward = 0
+            reward += -5
 
-        if self._agent_platform == self.num_platforms:
+        # next_y = self._platforms[min(self._agent_platform + 1, self.num_platforms - 1)][0][1]
+        # reward += 0.02 * (self._agent_position[1] / next_y)  # zachęta za wspinanie się
+        #
+        # # next_x1 = self._platforms[min(self._agent_platform + 1, self.num_platforms - 1)][0][0]
+        # # next_x2 = self._platforms[min(self._agent_platform + 1, self.num_platforms - 1)][1][0]
+        # #
+        # # if self._agent_position[0] > next_x1 or self._agent_position[0] < next_x2:
+        # #     reward += 0.1
+        #
+        # next_x1 = self._platforms[min(self._agent_platform + 1, self.num_platforms - 1)][0][0]
+        # next_x2 = self._platforms[min(self._agent_platform + 1, self.num_platforms - 1)][1][0]
+        # next_x_center = (next_x1 + next_x2) / 2
+        # prev_dist_x = abs(prev_x - next_x_center)
+        # new_dist_x = abs(self._agent_position[0] - next_x_center)
+        # reward += 0.1 * (prev_dist_x - new_dist_x)
+
+        # Środek następnej platformy (x, y)
+        next_platform_idx = min(self._agent_platform + 1, self.num_platforms - 1)
+        next_x1, next_y1 = self._platforms[next_platform_idx][0]
+        next_x2, next_y2 = self._platforms[next_platform_idx][1]
+
+        next_center = np.array([(next_x1 + next_x2) / 2, (next_y1 + next_y2) / 2])
+        agent_pos = np.array(self._agent_position)
+
+        # Odległość euklidesowa
+        distance = np.linalg.norm(agent_pos - next_center)
+
+        # # Normalizacja (opcjonalnie)
+        # map_center = np.array([self.map_width / 2, self.map_height / 2])
+        # max_distance = np.linalg.norm(map_center)  # max odległość od środka
+        # normalized_distance = distance / max_distance
+
+        # Nagroda za zbliżanie się do środka następnej platformy
+        reward += 2 * (1 - distance / (self.map_width / 2))
+
+        if self._agent_platform == self.num_platforms -1:
             terminated = True
-            reward = 20
+            reward += 50
+
+        if self._agent_position[1] < 0:
+            terminated = True
+            reward += -20
 
         return self._get_obs(), reward, terminated, truncated, self._get_info()
 
     def render(self):
         if self.render_mode == "ansi":
+            print(f"Is agent on platform: {self.is_agent_on_platform}")
+            print(f"Current platform index: {self._agent_platform}")
+            print(f"Next platform index: {min(self._agent_platform + 1, self.num_platforms - 1)}")
             print(f"Agent position: {self._agent_position}")
             print(f"Velocity Y: {self._agent_velocity_y}")
             print("Platforms:")
             for i, p in enumerate(self._platforms):
                 print(f"{i}: {p[0]} -> {p[1]}")
         elif self.render_mode == "human":
+
             if self.window is None:
                 pygame.init()
                 self.window = pygame.display.set_mode(self.window_size)
