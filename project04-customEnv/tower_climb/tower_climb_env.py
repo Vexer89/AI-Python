@@ -29,9 +29,10 @@ class TowerClimbEnv(gym.Env):
         self._horizontal_speed = 10.0
         self._jump_force = 30.0
 
+        self.map_change_count = 0
+
         self._platforms = self._initialize_map()
 
-        #TODO: agent position on platform
         self._agent_position = np.array([self.map_width / 2, 0], dtype=np.float32)
         self._agent_platform = 0
         self.is_agent_on_platform = True
@@ -77,8 +78,8 @@ class TowerClimbEnv(gym.Env):
         # [[0,0], [2,2]]
         # 1:: 1:1:
 
-        platforms[0, 0] = [0.0, 0.0]
-        platforms[0, 1] = [self.map_width, 0.0]
+        platforms[0, 0] = [self.map_width/3, 0.0]
+        platforms[0, 1] = [2*(self.map_width/3), 0.0]
 
         for i in range(1, self.num_platforms):
             y = i * dist_between_platforms
@@ -129,7 +130,12 @@ class TowerClimbEnv(gym.Env):
         self._agent_velocity_y = 0.0
         self._agent_platform = 0
         self.is_agent_on_platform = True
-        self._platforms = self._initialize_map()
+
+        if self.map_change_count > 50:
+            self._platforms = self._initialize_map()
+            self.map_change_count = 0
+        else:
+            self.map_change_count += 1
 
         return self._get_obs(), self._get_info()
 
